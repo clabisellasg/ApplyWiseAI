@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: applywise
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/applywise}
+    username: ${DB_USERNAME:applywise}
+    password: ${DB_PASSWORD:applywise}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
