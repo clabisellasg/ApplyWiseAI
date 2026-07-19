@@ -1,30 +1,27 @@
 import { useEffect, useState } from 'react'
+import { apiRequest } from './api/client'
+import { JobsSection } from './features/jobs/JobsSection'
+import { ResumesSection } from './features/resumes/ResumesSection'
 
 type HealthResponse = {
   status: string
 }
 
 type ConnectionState = 'loading' | 'online' | 'error'
+type ActiveSection = 'jobs' | 'resumes'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
-
-function App() {
+export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
+  const [activeSection, setActiveSection] = useState<ActiveSection>('jobs')
 
   useEffect(() => {
     const controller = new AbortController()
 
     async function checkBackend() {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/health`, {
+        const health = await apiRequest<HealthResponse>('/api/health', {
           signal: controller.signal,
         })
-
-        if (!response.ok) {
-          throw new Error(`Health check failed with status ${response.status}`)
-        }
-
-        const health: HealthResponse = await response.json()
         setConnectionState(health.status === 'UP' ? 'online' : 'error')
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
@@ -34,38 +31,83 @@ function App() {
     }
 
     void checkBackend()
-
     return () => controller.abort()
   }, [])
 
   return (
-    <main className="page-shell">
-      <section className="status-card" aria-labelledby="page-title">
-        <p className="eyebrow">Application readiness</p>
-        <h1 id="page-title">ApplyWise AI</h1>
-        <p className="intro">
-          Your focused workspace for building stronger, evidence-based job applications.
-        </p>
+    <div className="app-shell">
+      <header className="site-header">
+        <div className="site-header__inner">
+          <a className="brand" href="#workspace" aria-label="ApplyWise AI home">
+            <span className="brand-mark" aria-hidden="true">A</span>
+            <span>ApplyWise AI</span>
+          </a>
 
-        <div className={`backend-status backend-status--${connectionState}`} role="status" aria-live="polite">
-          <span className="status-dot" aria-hidden="true" />
-          <div>
-            <p className="status-label">Backend connection</p>
-            {connectionState === 'loading' && <p className="status-message">Checking availability…</p>}
-            {connectionState === 'online' && <p className="status-message">Online and ready</p>}
-            {connectionState === 'error' && (
-              <p className="status-message">
-                Offline. Start the backend and refresh this page.
-              </p>
-            )}
+          <div
+            className={`backend-pill backend-pill--${connectionState}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="status-dot" aria-hidden="true" />
+            {connectionState === 'loading' && 'Checking backend'}
+            {connectionState === 'online' && 'Backend online'}
+            {connectionState === 'error' && 'Backend offline'}
           </div>
         </div>
+      </header>
 
-        <p className="milestone-note">Milestone 0 · Walking skeleton</p>
-      </section>
-    </main>
+      <main id="workspace">
+        <section className="hero" aria-labelledby="page-title">
+          <p className="eyebrow">Application workspace</p>
+          <h1 id="page-title">Keep the evidence for your next opportunity in one place.</h1>
+          <p>
+            Save job postings and text resumes now. ApplyWise will use these records as the
+            grounded source for future compatibility analysis.
+          </p>
+        </section>
+
+        <nav className="section-tabs" aria-label="Workspace sections" role="tablist">
+          <button
+            id="jobs-tab"
+            className="section-tab"
+            type="button"
+            role="tab"
+            aria-controls="jobs-panel"
+            aria-selected={activeSection === 'jobs'}
+            onClick={() => setActiveSection('jobs')}
+          >
+            Job postings
+          </button>
+          <button
+            id="resumes-tab"
+            className="section-tab"
+            type="button"
+            role="tab"
+            aria-controls="resumes-panel"
+            aria-selected={activeSection === 'resumes'}
+            onClick={() => setActiveSection('resumes')}
+          >
+            Resumes
+          </button>
+        </nav>
+
+        <div className="workspace-panel">
+          {activeSection === 'jobs' && (
+            <div id="jobs-panel" role="tabpanel" aria-labelledby="jobs-tab" tabIndex={0}>
+              <JobsSection />
+            </div>
+          )}
+          {activeSection === 'resumes' && (
+            <div id="resumes-panel" role="tabpanel" aria-labelledby="resumes-tab" tabIndex={0}>
+              <ResumesSection />
+            </div>
+          )}
+        </div>
+      </main>
+
+      <footer className="site-footer">
+        <p>Milestone 1 · Persistent job and resume workspace</p>
+      </footer>
+    </div>
   )
 }
-
-export default App
-
