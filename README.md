@@ -1,6 +1,6 @@
 # ApplyWise AI
 
-ApplyWise AI is a modular monolith with a Spring Boot backend and a React frontend. Milestone 0 provides a walking skeleton that verifies browser-to-backend connectivity and includes PostgreSQL for local development.
+ApplyWise AI is a modular monolith with a Spring Boot backend and a React frontend. It stores job postings and text resumes in PostgreSQL and can compare them using a deterministic local keyword analyzer.
 
 ## Prerequisites
 
@@ -37,6 +37,15 @@ npm run dev
 
 Open `http://localhost:5173`. The page checks `http://localhost:8080/api/health` and reports whether the backend is online.
 
+## Run a fake job-match analysis
+
+1. Open the **Job postings** section and save a job description.
+2. Open the **Resumes** section and save a text resume.
+3. Open **Job match**, select the saved resume and job posting, and choose **Analyze match**.
+4. Review the score, skill evidence, strengths, gaps, and recommended actions. Saved results remain available in analysis history.
+
+This milestone uses a deterministic local keyword matcher. It does not call OpenAI or another external AI service, and it does not require an API key. Its result is a keyword comparison rather than generative AI output.
+
 To stop PostgreSQL, return to the repository root and run:
 
 ```powershell
@@ -63,4 +72,3 @@ npm run build
 ## Local configuration
 
 The default database values are intended only for local development. Override them with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` when needed. The frontend can override the backend address with `VITE_API_BASE_URL`.
-
