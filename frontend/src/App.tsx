@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiRequest } from './api/client'
+import { AnalysisPage } from './features/analyses/AnalysisPage'
 import { JobsSection } from './features/jobs/JobsSection'
 import { ResumesSection } from './features/resumes/ResumesSection'
 
@@ -8,7 +9,7 @@ type HealthResponse = {
 }
 
 type ConnectionState = 'loading' | 'online' | 'error'
-type ActiveSection = 'jobs' | 'resumes'
+type ActiveSection = 'jobs' | 'resumes' | 'analyses'
 
 export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
@@ -61,8 +62,8 @@ export function App() {
           <p className="eyebrow">Application workspace</p>
           <h1 id="page-title">Keep the evidence for your next opportunity in one place.</h1>
           <p>
-            Save job postings and text resumes now. ApplyWise will use these records as the
-            grounded source for future compatibility analysis.
+            Save job postings and text resumes, then compare them with a deterministic local
+            keyword analyzer that stays grounded in your source material.
           </p>
         </section>
 
@@ -89,6 +90,17 @@ export function App() {
           >
             Resumes
           </button>
+          <button
+            id="analyses-tab"
+            className="section-tab"
+            type="button"
+            role="tab"
+            aria-controls="analyses-panel"
+            aria-selected={activeSection === 'analyses'}
+            onClick={() => setActiveSection('analyses')}
+          >
+            Job match
+          </button>
         </nav>
 
         <div className="workspace-panel">
@@ -102,11 +114,16 @@ export function App() {
               <ResumesSection />
             </div>
           )}
+          {activeSection === 'analyses' && (
+            <div id="analyses-panel" role="tabpanel" aria-labelledby="analyses-tab" tabIndex={0}>
+              <AnalysisPage onNavigate={setActiveSection} />
+            </div>
+          )}
         </div>
       </main>
 
       <footer className="site-footer">
-        <p>Milestone 1 · Persistent job and resume workspace</p>
+        <p>Milestone 2 · Deterministic job-match workspace</p>
       </footer>
     </div>
   )
