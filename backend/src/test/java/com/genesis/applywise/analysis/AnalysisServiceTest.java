@@ -3,6 +3,7 @@ package com.genesis.applywise.analysis;
 import com.genesis.applywise.ai.AiAnalysisClient;
 import com.genesis.applywise.ai.AnalysisResult;
 import com.genesis.applywise.ai.MatchStatus;
+import com.genesis.applywise.ai.NvidiaProviderException;
 import com.genesis.applywise.ai.SkillAssessment;
 import com.genesis.applywise.common.exception.ResourceNotFoundException;
 import com.genesis.applywise.job.JobPosting;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
@@ -115,6 +117,27 @@ class AnalysisServiceTest {
                 org.mockito.ArgumentMatchers.anyString()
         );
         verifyNoInteractions(analysisRepository);
+    }
+
+    @Test
+    void doesNotSaveOrFallBackWhenConfiguredProviderFails() {
+        Resume resume = mock(Resume.class);
+        JobPosting jobPosting = mock(JobPosting.class);
+        when(resume.getContent()).thenReturn("Java experience");
+        when(jobPosting.getDescription()).thenReturn("Java required");
+        NvidiaProviderException failure = new NvidiaProviderException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "NVIDIA analysis service is temporarily unavailable."
+        );
+        when(resumeRepository.findById(4L)).thenReturn(Optional.of(resume));
+        when(jobPostingRepository.findById(9L)).thenReturn(Optional.of(jobPosting));
+        when(aiAnalysisClient.analyze(resume.getContent(), jobPosting.getDescription())).thenThrow(failure);
+
+        assertThatThrownBy(() -> analysisService.create(new CreateAnalysisRequest(4L, 9L)))
+                .isSameAs(failure);
+
+        verify(analysisRepository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any(Analysis.class));
+        verify(aiAnalysisClient, never()).provider();
     }
 
     @Test

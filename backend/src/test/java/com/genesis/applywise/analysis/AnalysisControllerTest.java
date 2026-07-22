@@ -2,6 +2,7 @@ package com.genesis.applywise.analysis;
 
 import com.genesis.applywise.ai.AnalysisResult;
 import com.genesis.applywise.ai.MatchStatus;
+import com.genesis.applywise.ai.NvidiaProviderException;
 import com.genesis.applywise.ai.SkillAssessment;
 import com.genesis.applywise.common.exception.GlobalExceptionHandler;
 import com.genesis.applywise.common.exception.ResourceNotFoundException;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -104,6 +106,26 @@ class AnalysisControllerTest {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Job posting not found: 404"));
+    }
+
+    @Test
+    void returnsSafeProviderError() throws Exception {
+        when(analysisService.create(any(CreateAnalysisRequest.class)))
+                .thenThrow(new NvidiaProviderException(
+                        HttpStatus.BAD_GATEWAY,
+                        "NVIDIA returned an invalid analysis response."
+                ));
+
+        mockMvc.perform(post("/api/analyses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resumeId": 4,
+                                  "jobPostingId": 9
+                                }
+                                """))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.message").value("NVIDIA returned an invalid analysis response."));
     }
 
     @Test

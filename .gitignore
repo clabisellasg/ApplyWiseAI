@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-local.yaml
+backend/src/main/resources/application-local.properties
 
 # Java and Maven
 backend/target/
@@ -21,4 +24,3 @@ frontend/.vite/
 *.iml
 .DS_Store
 Thumbs.db
-

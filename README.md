@@ -1,6 +1,6 @@
 # ApplyWise AI
 
-ApplyWise AI is a modular monolith with a Spring Boot backend and a React frontend. It stores job postings and text resumes in PostgreSQL and can compare them using a deterministic local keyword analyzer.
+ApplyWise AI is a modular monolith with a Spring Boot backend and a React frontend. It stores job postings and text resumes in PostgreSQL and can compare them using either the default deterministic local keyword analyzer or NVIDIA-hosted Nemotron.
 
 ## Prerequisites
 
@@ -44,7 +44,43 @@ Open `http://localhost:5173`. The page checks `http://localhost:8080/api/health`
 3. Open **Job match**, select the saved resume and job posting, and choose **Analyze match**.
 4. Review the score, skill evidence, strengths, gaps, and recommended actions. Saved results remain available in analysis history.
 
-This milestone uses a deterministic local keyword matcher. It does not call OpenAI or another external AI service, and it does not require an API key. Its result is a keyword comparison rather than generative AI output.
+Fake mode uses a deterministic local keyword matcher, makes no external AI request, and requires no API key. Its result is a keyword comparison rather than generative AI output.
+
+## NVIDIA Nemotron analysis
+
+NVIDIA mode sends the selected resume content and job description to NVIDIA's hosted API at `https://integrate.api.nvidia.com/v1/chat/completions`. An NVIDIA API key is required. The hosted endpoint is currently a free development/trial service and may have rate or availability limits. Use synthetic or redacted resumes during development; do not send personal data unless you have reviewed NVIDIA's applicable terms and privacy practices.
+
+The backend requests non-streaming output from `nvidia/nemotron-3-super-120b-a12b` with extended reasoning disabled. Structured output uses NVIDIA NIM guided JSON through `nvext.guided_json`, followed by strict Java validation before an analysis can be saved. The provider is instructed not to invent qualifications, and any returned resume evidence must match text in the submitted resume.
+
+Fake remains the default. To run the backend in NVIDIA mode from a new PowerShell window, set the variables only in that process and then start Spring Boot:
+
+```powershell
+$env:AI_PROVIDER = 'nvidia'
+$env:NVIDIA_API_KEY = '<your NVIDIA API key>'
+$env:NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
+$env:NVIDIA_MODEL = 'nvidia/nemotron-3-super-120b-a12b'
+$env:NVIDIA_TIMEOUT_SECONDS = '120'
+$env:NVIDIA_MAX_TOKENS = '4096'
+$env:NVIDIA_MAX_INPUT_CHARACTERS = '50000'
+Set-Location .\backend
+.\mvnw.cmd spring-boot:run
+```
+
+If `AI_PROVIDER=nvidia` and `NVIDIA_API_KEY` is missing, startup fails clearly. Provider errors never fall back to a fake result. Automated tests mock the NVIDIA HTTP boundary, never contact NVIDIA, and consume no API quota.
+
+Configuration variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AI_PROVIDER` | `fake` | Selects `fake` or `nvidia`. |
+| `NVIDIA_API_KEY` | none | Bearer token; required only for NVIDIA mode. |
+| `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA API base URL. |
+| `NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Exact hosted model identifier saved with each analysis. |
+| `NVIDIA_TIMEOUT_SECONDS` | `120` | Connect and response timeout. |
+| `NVIDIA_MAX_TOKENS` | `4096` | Maximum generated output tokens. |
+| `NVIDIA_MAX_INPUT_CHARACTERS` | `50000` | Per-document input limit; oversized text is rejected, not truncated. |
+
+The root `.env.example` contains placeholders for local reference. Spring Boot does not automatically import that file when launched directly, so set variables in PowerShell or through your IDE. Real `.env` files and `application-local` configuration files are ignored and must never be committed.
 
 To stop PostgreSQL, return to the repository root and run:
 
@@ -69,6 +105,6 @@ npm install
 npm run build
 ```
 
-## Local configuration
+## Local database and frontend configuration
 
 The default database values are intended only for local development. Override them with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` when needed. The frontend can override the backend address with `VITE_API_BASE_URL`.
