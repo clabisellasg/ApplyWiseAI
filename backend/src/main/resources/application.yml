@@ -15,3 +15,13 @@ management:
     web:
       exposure:
         include: health
+
+ai:
+  provider: ${AI_PROVIDER:fake}
+  nvidia:
+    api-key: ${NVIDIA_API_KEY:}
+    base-url: ${NVIDIA_BASE_URL:https://integrate.api.nvidia.com/v1}
+    model: ${NVIDIA_MODEL:nvidia/nemotron-3-super-120b-a12b}
+    timeout-seconds: ${NVIDIA_TIMEOUT_SECONDS:120}
+    max-tokens: ${NVIDIA_MAX_TOKENS:4096}
+    max-input-characters: ${NVIDIA_MAX_INPUT_CHARACTERS:50000}
