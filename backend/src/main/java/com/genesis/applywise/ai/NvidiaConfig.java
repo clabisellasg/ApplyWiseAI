@@ -58,7 +58,8 @@ public class NvidiaConfig {
                 restClient,
                 objectMapper,
                 properties,
-                new AnalysisPromptBuilder(objectMapper, properties.maxInputCharacters())
+                new AnalysisPromptBuilder(objectMapper, properties.maxInputCharacters()),
+                new AnalysisResultValidator(new ResumeEvidenceValidator())
         );
     }
 

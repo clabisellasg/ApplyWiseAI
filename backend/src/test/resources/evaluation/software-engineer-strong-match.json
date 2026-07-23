@@ -1,0 +1,11 @@
+{
+  "fixtureId": "software-engineer-strong-match",
+  "resumeText": "Synthetic candidate Rowan Vale built Java and Spring Boot REST APIs backed by PostgreSQL, containerized services with Docker, and maintained Git workflows at fictional Northstar Labs.",
+  "jobDescription": "Fictional Cedar Systems seeks a software engineer with Java, Spring Boot, REST API, PostgreSQL, Docker, and Git experience.",
+  "expectedScoreRange": { "minimum": 70, "maximum": 100 },
+  "expectedMatchedSkills": ["Java", "Spring Boot", "PostgreSQL", "Docker"],
+  "expectedPartialSkills": [],
+  "expectedMissingSkills": [],
+  "forbiddenClaims": ["holds an AWS certification", "managed 50 engineers"],
+  "additionalValidationNotes": ["Direct evidence exists for every named core skill."]
+}

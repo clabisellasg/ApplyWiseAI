@@ -53,6 +53,9 @@ public class Analysis {
     @Column(name = "prompt_version", nullable = false, length = 64)
     private String promptVersion;
 
+    @Column(name = "input_hash", length = 64)
+    private String inputHash;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -65,7 +68,8 @@ public class Analysis {
             AnalysisResult result,
             String provider,
             String model,
-            String promptVersion
+            String promptVersion,
+            String inputHash
     ) {
         this.resume = resume;
         this.jobPosting = jobPosting;
@@ -75,6 +79,7 @@ public class Analysis {
         this.provider = provider;
         this.model = model;
         this.promptVersion = promptVersion;
+        this.inputHash = inputHash;
     }
 
     @PrePersist
@@ -116,6 +121,10 @@ public class Analysis {
 
     public String getPromptVersion() {
         return promptVersion;
+    }
+
+    public String getInputHash() {
+        return inputHash;
     }
 
     public Instant getCreatedAt() {

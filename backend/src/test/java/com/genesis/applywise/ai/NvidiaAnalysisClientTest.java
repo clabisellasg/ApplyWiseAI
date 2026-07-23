@@ -59,6 +59,8 @@ class NvidiaAnalysisClientTest {
                 .andExpect(jsonPath("$.nvext.guided_json.required[0]").value("matchScore"))
                 .andExpect(jsonPath("$.nvext.guided_json.properties.skills.items.properties.status.enum[0]")
                         .value("MATCHED"))
+                .andExpect(jsonPath("$.nvext.guided_json.properties.skills.items.properties.resumeEvidence.type")
+                        .value("string"))
                 .andExpect(jsonPath("$.messages[0].role").value("system"))
                 .andExpect(jsonPath("$.messages[1].content").value(org.hamcrest.Matchers.containsString(RESUME)))
                 .andRespond(withSuccess(providerResponse(validResult()), MediaType.APPLICATION_JSON));
@@ -83,7 +85,7 @@ class NvidiaAnalysisClientTest {
 
         assertProviderFailure(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "NVIDIA authentication failed. Check the configured NVIDIA_API_KEY."
+                "NVIDIA authentication failed. Verify NVIDIA_API_KEY and restart the backend."
         );
     }
 
@@ -92,7 +94,7 @@ class NvidiaAnalysisClientTest {
         server.expect(requestTo(BASE_URL + "/chat/completions"))
                 .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
 
-        assertProviderFailure(HttpStatus.TOO_MANY_REQUESTS, "NVIDIA rate limit reached. Try again later.");
+        assertProviderFailure(HttpStatus.TOO_MANY_REQUESTS, "NVIDIA rate limit reached. Wait before trying again.");
     }
 
     @Test
@@ -100,7 +102,7 @@ class NvidiaAnalysisClientTest {
         server.expect(requestTo(BASE_URL + "/chat/completions"))
                 .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
 
-        assertProviderFailure(HttpStatus.SERVICE_UNAVAILABLE, "NVIDIA analysis service is temporarily unavailable.");
+        assertProviderFailure(HttpStatus.SERVICE_UNAVAILABLE, "NVIDIA is temporarily unavailable. Try again later.");
     }
 
     @Test
@@ -116,7 +118,7 @@ class NvidiaAnalysisClientTest {
         assertThatThrownBy(() -> timeoutClient.analyze(RESUME, JOB))
                 .isInstanceOfSatisfying(NvidiaProviderException.class, exception -> {
                     assertThat(exception.getResponseStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-                    assertThat(exception).hasMessage("NVIDIA analysis service is temporarily unavailable.");
+                    assertThat(exception).hasMessage("NVIDIA is temporarily unavailable. Try again later.");
                 });
     }
 
@@ -124,21 +126,61 @@ class NvidiaAnalysisClientTest {
     void rejectsEmptyChoices() {
         respondWithOuterJson("{\"choices\":[]}");
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.EMPTY_PROVIDER_CONTENT);
     }
 
     @Test
     void rejectsMissingMessageContent() {
         respondWithOuterJson("{\"choices\":[{\"message\":{}}]}");
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.EMPTY_PROVIDER_CONTENT);
     }
 
     @Test
     void rejectsMalformedResultJson() throws Exception {
         respondWithResult("{not-json");
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.JSON_SYNTAX_ERROR);
+    }
+
+    @Test
+    void rejectsResponseThatReachedTheConfiguredTokenLimit() throws Exception {
+        respondWithOuterJson(providerResponse("{\"matchScore\":50", "length", null));
+
+        assertInvalidResponse(AnalysisValidationFailure.TRUNCATED_PROVIDER_RESPONSE);
+    }
+
+    @Test
+    void distinguishesProviderRefusalWithoutExposingRefusalText() throws Exception {
+        respondWithOuterJson(providerResponse("", "stop", "private refusal details"));
+
+        assertInvalidResponse(AnalysisValidationFailure.PROVIDER_REFUSAL);
+    }
+
+    @Test
+    void acceptsACompleteJsonObjectWrappedInOneMarkdownFence() throws Exception {
+        respondWithResult("```json\n" + validResult() + "\n```");
+
+        AnalysisResult result = client.analyze(RESUME, JOB);
+
+        assertThat(result.matchScore()).isEqualTo(50);
+        server.verify();
+    }
+
+    @Test
+    void rejectsMarkdownFenceWithCommentaryOutsideTheJsonBlock() throws Exception {
+        respondWithResult("Here is the result:\n```json\n" + validResult() + "\n```");
+
+        assertInvalidResponse(AnalysisValidationFailure.MARKDOWN_WRAPPED_JSON);
+    }
+
+    @Test
+    void distinguishesValidJsonThatDoesNotMatchTheRequiredSchema() throws Exception {
+        ObjectNode result = validResult();
+        result.put("unexpectedField", true);
+        respondWithResult(result.toString());
+
+        assertInvalidResponse(AnalysisValidationFailure.RESPONSE_SCHEMA_MISMATCH);
     }
 
     @Test
@@ -147,7 +189,7 @@ class NvidiaAnalysisClientTest {
         result.put("matchScore", 101);
         respondWithResult(result.toString());
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.INVALID_SCORE);
     }
 
     @Test
@@ -156,7 +198,7 @@ class NvidiaAnalysisClientTest {
         ((ObjectNode) result.withArray("skills").get(0)).put("status", "EXCELLENT");
         respondWithResult(result.toString());
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.UNSUPPORTED_STATUS);
     }
 
     @Test
@@ -165,7 +207,7 @@ class NvidiaAnalysisClientTest {
         result.remove("recommendedActions");
         respondWithResult(result.toString());
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.MISSING_REQUIRED_COLLECTION);
     }
 
     @Test
@@ -175,7 +217,7 @@ class NvidiaAnalysisClientTest {
                 .put("resumeEvidence", "Led a team of 40 engineers.");
         respondWithResult(result.toString());
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.UNSUPPORTED_EVIDENCE);
     }
 
     @Test
@@ -184,7 +226,42 @@ class NvidiaAnalysisClientTest {
         ((ObjectNode) result.withArray("skills").get(0)).putNull("resumeEvidence");
         respondWithResult(result.toString());
 
-        assertInvalidResponse();
+        assertInvalidResponse(AnalysisValidationFailure.MISSING_REQUIRED_EVIDENCE);
+    }
+
+    @Test
+    void reportsBlankSkillNameWithoutIncludingProviderContent() throws Exception {
+        ObjectNode result = validResult();
+        ((ObjectNode) result.withArray("skills").get(0)).put("name", " ");
+        respondWithResult(result.toString());
+
+        assertInvalidResponse(AnalysisValidationFailure.BLANK_SKILL_NAME);
+    }
+
+    @Test
+    void reportsDuplicateSkillWithoutIncludingSkillContent() throws Exception {
+        ObjectNode result = validResult();
+        result.withArray("skills").addObject()
+                .put("name", " java ")
+                .put("status", "MATCHED")
+                .put("resumeEvidence", "Built Java services")
+                .put("explanation", "Duplicate assessment.");
+        respondWithResult(result.toString());
+
+        assertInvalidResponse(AnalysisValidationFailure.DUPLICATE_SKILL);
+    }
+
+    @Test
+    void reportsContradictoryStatusWithoutIncludingSkillContent() throws Exception {
+        ObjectNode result = validResult();
+        result.withArray("skills").addObject()
+                .put("name", "Java")
+                .put("status", "MISSING")
+                .put("resumeEvidence", "")
+                .put("explanation", "Contradictory assessment.");
+        respondWithResult(result.toString());
+
+        assertInvalidResponse(AnalysisValidationFailure.CONTRADICTORY_STATUS);
     }
 
     @Test
@@ -213,7 +290,8 @@ class NvidiaAnalysisClientTest {
                 restClient,
                 objectMapper,
                 properties,
-                new AnalysisPromptBuilder(objectMapper, maxInputCharacters)
+                new AnalysisPromptBuilder(objectMapper, maxInputCharacters),
+                new AnalysisResultValidator(new ResumeEvidenceValidator())
         );
     }
 
@@ -226,8 +304,19 @@ class NvidiaAnalysisClientTest {
         server.verify();
     }
 
-    private void assertInvalidResponse() {
-        assertProviderFailure(HttpStatus.BAD_GATEWAY, "NVIDIA returned an invalid analysis response.");
+    private void assertInvalidResponse(AnalysisValidationFailure validationFailure) {
+        assertThatThrownBy(() -> client.analyze(RESUME, JOB))
+                .isInstanceOfSatisfying(NvidiaProviderException.class, exception -> {
+                    assertThat(exception.getResponseStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(exception.getReason()).isEqualTo(NvidiaProviderException.Reason.INVALID_RESPONSE);
+                    assertThat(exception.getValidationFailure()).isEqualTo(validationFailure);
+                    assertThat(exception)
+                            .hasMessage("NVIDIA returned an invalid analysis. Try again; no result was saved.")
+                            .hasMessageNotContaining(RESUME)
+                            .hasMessageNotContaining(JOB)
+                            .hasMessageNotContaining("private refusal details");
+                });
+        server.verify();
     }
 
     private void respondWithResult(String result) throws Exception {
@@ -244,9 +333,20 @@ class NvidiaAnalysisClientTest {
     }
 
     private String providerResponse(String result) throws Exception {
+        return providerResponse(result, null, null);
+    }
+
+    private String providerResponse(String result, String finishReason, String refusal) throws Exception {
         ObjectNode response = objectMapper.createObjectNode();
-        ObjectNode message = response.putArray("choices").addObject().putObject("message");
+        ObjectNode choice = response.putArray("choices").addObject();
+        ObjectNode message = choice.putObject("message");
         message.put("content", result);
+        if (refusal != null) {
+            message.put("refusal", refusal);
+        }
+        if (finishReason != null) {
+            choice.put("finish_reason", finishReason);
+        }
         return objectMapper.writeValueAsString(response);
     }
 
@@ -263,7 +363,7 @@ class NvidiaAnalysisClientTest {
         skills.addObject()
                 .put("name", "Docker")
                 .put("status", "MISSING")
-                .putNull("resumeEvidence")
+                .put("resumeEvidence", "")
                 .put("explanation", "Docker is requested but is not evidenced.");
         result.putArray("strengths").add("Direct Java experience.");
         result.putArray("gaps").add("No Docker evidence.");

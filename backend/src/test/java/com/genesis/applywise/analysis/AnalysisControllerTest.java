@@ -1,6 +1,7 @@
 package com.genesis.applywise.analysis;
 
 import com.genesis.applywise.ai.AnalysisResult;
+import com.genesis.applywise.ai.AnalysisValidationFailure;
 import com.genesis.applywise.ai.MatchStatus;
 import com.genesis.applywise.ai.NvidiaProviderException;
 import com.genesis.applywise.ai.SkillAssessment;
@@ -61,7 +62,8 @@ class AnalysisControllerTest {
                 .andExpect(jsonPath("$.result.skills[0].status").value("MATCHED"))
                 .andExpect(jsonPath("$.provider").value("fake"))
                 .andExpect(jsonPath("$.model").value("keyword-matcher-v1"))
-                .andExpect(jsonPath("$.promptVersion").value("v1"));
+                .andExpect(jsonPath("$.promptVersion").value("v1"))
+                .andExpect(jsonPath("$.cacheHit").value(false));
     }
 
     @Test
@@ -113,7 +115,9 @@ class AnalysisControllerTest {
         when(analysisService.create(any(CreateAnalysisRequest.class)))
                 .thenThrow(new NvidiaProviderException(
                         HttpStatus.BAD_GATEWAY,
-                        "NVIDIA returned an invalid analysis response."
+                        NvidiaProviderException.Reason.INVALID_RESPONSE,
+                        "NVIDIA returned an invalid analysis response.",
+                        AnalysisValidationFailure.UNSUPPORTED_EVIDENCE
                 ));
 
         mockMvc.perform(post("/api/analyses")
@@ -125,7 +129,8 @@ class AnalysisControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.message").value("NVIDIA returned an invalid analysis response."));
+                .andExpect(jsonPath("$.message").value("NVIDIA returned an invalid analysis response."))
+                .andExpect(jsonPath("$.validationFailure").doesNotExist());
     }
 
     @Test
@@ -183,7 +188,8 @@ class AnalysisControllerTest {
                 "fake",
                 "keyword-matcher-v1",
                 "v1",
-                CREATED_AT
+                CREATED_AT,
+                false
         );
     }
 }

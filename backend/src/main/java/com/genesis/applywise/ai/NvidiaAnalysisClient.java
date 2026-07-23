@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class NvidiaAnalysisClient implements AiAnalysisClient {
@@ -27,23 +28,28 @@ public class NvidiaAnalysisClient implements AiAnalysisClient {
     private static final Set<String> SKILL_FIELDS = Set.of(
             "name", "status", "resumeEvidence", "explanation"
     );
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
-
+    private static final Pattern COMPLETE_JSON_CODE_FENCE = Pattern.compile(
+            "\\A```(?:json)?\\s*\\R?([\\s\\S]*?)\\R?```\\s*\\z",
+            Pattern.CASE_INSENSITIVE
+    );
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final NvidiaProperties properties;
     private final AnalysisPromptBuilder promptBuilder;
+    private final AnalysisResultValidator resultValidator;
 
     public NvidiaAnalysisClient(
             RestClient restClient,
             ObjectMapper objectMapper,
             NvidiaProperties properties,
-            AnalysisPromptBuilder promptBuilder
+            AnalysisPromptBuilder promptBuilder,
+            AnalysisResultValidator resultValidator
     ) {
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.promptBuilder = promptBuilder;
+        this.resultValidator = resultValidator;
     }
 
     @Override
@@ -94,7 +100,7 @@ public class NvidiaAnalysisClient implements AiAnalysisClient {
                     .retrieve()
                     .body(NvidiaChatResponse.class);
             if (response == null) {
-                throw invalidResponse();
+                throw invalidResponse(AnalysisValidationFailure.MALFORMED_PROVIDER_RESPONSE);
             }
             return response;
         } catch (NvidiaProviderException exception) {
@@ -104,7 +110,7 @@ public class NvidiaAnalysisClient implements AiAnalysisClient {
         } catch (ResourceAccessException exception) {
             throw temporarilyUnavailable();
         } catch (RestClientException exception) {
-            throw invalidResponse();
+            throw invalidResponse(AnalysisValidationFailure.MALFORMED_PROVIDER_RESPONSE);
         }
     }
 
@@ -112,132 +118,185 @@ public class NvidiaAnalysisClient implements AiAnalysisClient {
         if (statusCode == 401 || statusCode == 403) {
             return new NvidiaProviderException(
                     HttpStatus.SERVICE_UNAVAILABLE,
-                    "NVIDIA authentication failed. Check the configured NVIDIA_API_KEY."
+                    NvidiaProviderException.Reason.AUTHENTICATION,
+                    "NVIDIA authentication failed. Verify NVIDIA_API_KEY and restart the backend."
             );
         }
         if (statusCode == 429) {
             return new NvidiaProviderException(
                     HttpStatus.TOO_MANY_REQUESTS,
-                    "NVIDIA rate limit reached. Try again later."
+                    NvidiaProviderException.Reason.RATE_LIMIT,
+                    "NVIDIA rate limit reached. Wait before trying again."
             );
         }
         if (statusCode >= 500) {
             return temporarilyUnavailable();
         }
-        return invalidResponse();
+        return invalidResponse(AnalysisValidationFailure.MALFORMED_PROVIDER_RESPONSE);
     }
 
     private String responseContent(NvidiaChatResponse response) {
         if (response.choices() == null || response.choices().isEmpty()) {
-            throw invalidResponse();
+            throw invalidResponse(AnalysisValidationFailure.EMPTY_PROVIDER_CONTENT);
         }
         NvidiaChatResponse.Choice choice = response.choices().getFirst();
-        if (choice == null || choice.message() == null
-                || choice.message().content() == null || choice.message().content().isBlank()) {
-            throw invalidResponse();
+        if (choice == null || choice.message() == null) {
+            throw invalidResponse(AnalysisValidationFailure.RESPONSE_SCHEMA_MISMATCH);
         }
-        return choice.message().content();
+        if (choice.message().refusal() != null && !choice.message().refusal().isBlank()) {
+            throw invalidResponse(AnalysisValidationFailure.PROVIDER_REFUSAL);
+        }
+
+        String finishReason = choice.finishReason() == null
+                ? ""
+                : choice.finishReason().toLowerCase(Locale.ROOT);
+        if (finishReason.equals("length") || finishReason.equals("max_tokens")) {
+            throw invalidResponse(AnalysisValidationFailure.TRUNCATED_PROVIDER_RESPONSE);
+        }
+        if (finishReason.equals("content_filter")) {
+            throw invalidResponse(AnalysisValidationFailure.PROVIDER_REFUSAL);
+        }
+
+        String content = choice.message().content();
+        if (content == null || content.isBlank()) {
+            throw invalidResponse(AnalysisValidationFailure.EMPTY_PROVIDER_CONTENT);
+        }
+        return unwrapCompleteJsonCodeFence(content);
     }
 
     private AnalysisResult parseAndValidate(String content, String resumeContent) {
+        JsonNode root;
         try {
-            JsonNode root = objectMapper.reader()
+            root = objectMapper.reader()
                     .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(content);
-            validateResultNode(root, resumeContent);
-            return objectMapper.treeToValue(root, AnalysisResult.class);
-        } catch (NvidiaProviderException exception) {
-            throw exception;
-        } catch (JsonProcessingException | IllegalArgumentException | NullPointerException exception) {
-            throw invalidResponse();
+        } catch (JsonProcessingException exception) {
+            throw invalidResponse(AnalysisValidationFailure.JSON_SYNTAX_ERROR);
         }
+
+        validateResultNode(root);
+        AnalysisResult result;
+        try {
+            result = objectMapper.treeToValue(root, AnalysisResult.class);
+        } catch (JsonProcessingException | IllegalArgumentException | NullPointerException exception) {
+            throw invalidResponse(AnalysisValidationFailure.RESPONSE_SCHEMA_MISMATCH);
+        }
+
+        try {
+            resultValidator.validate(result, resumeContent);
+        } catch (AnalysisResultValidationException exception) {
+            throw invalidResponse(exception.getFailure());
+        }
+        return result;
     }
 
-    private void validateResultNode(JsonNode root, String resumeContent) {
-        requireObjectWithExactFields(root, RESULT_FIELDS);
+    private void validateResultNode(JsonNode root) {
+        requireObject(root);
 
         JsonNode score = root.get("matchScore");
-        if (!score.isIntegralNumber() || score.intValue() < 0 || score.intValue() > 100) {
-            throw invalidResponse();
+        if (score == null
+                || !score.isIntegralNumber()
+                || score.intValue() < 0
+                || score.intValue() > 100) {
+            throw invalidResponse(AnalysisValidationFailure.INVALID_SCORE);
         }
-        requireNonBlankText(root.get("summary"));
-        validateSkills(root.get("skills"), resumeContent);
+        requireNonBlankText(root.get("summary"), AnalysisValidationFailure.MISSING_REQUIRED_TEXT);
+        validateSkills(root.get("skills"));
         validateStringArray(root.get("strengths"));
         validateStringArray(root.get("gaps"));
         validateStringArray(root.get("recommendedActions"));
+        rejectUnexpectedFields(root, RESULT_FIELDS);
     }
 
-    private void validateSkills(JsonNode skills, String resumeContent) {
+    private void validateSkills(JsonNode skills) {
         if (skills == null || !skills.isArray()) {
-            throw invalidResponse();
+            throw invalidResponse(AnalysisValidationFailure.MISSING_REQUIRED_COLLECTION);
         }
         for (JsonNode skill : skills) {
-            requireObjectWithExactFields(skill, SKILL_FIELDS);
-            requireNonBlankText(skill.get("name"));
-            requireNonBlankText(skill.get("status"));
-            requireNonBlankText(skill.get("explanation"));
+            if (skill == null || !skill.isObject()) {
+                throw invalidResponse(AnalysisValidationFailure.RESPONSE_SCHEMA_MISMATCH);
+            }
+            requireNonBlankText(skill.get("name"), AnalysisValidationFailure.BLANK_SKILL_NAME);
+            requireNonBlankText(skill.get("status"), AnalysisValidationFailure.UNSUPPORTED_STATUS);
+            requireNonBlankText(
+                    skill.get("explanation"),
+                    AnalysisValidationFailure.BLANK_SKILL_EXPLANATION
+            );
 
-            MatchStatus status;
             try {
-                status = MatchStatus.valueOf(skill.get("status").textValue());
+                MatchStatus.valueOf(skill.get("status").textValue());
             } catch (IllegalArgumentException exception) {
-                throw invalidResponse();
+                throw invalidResponse(AnalysisValidationFailure.UNSUPPORTED_STATUS);
             }
 
             JsonNode evidence = skill.get("resumeEvidence");
             if (evidence == null || (!evidence.isNull() && !evidence.isTextual())) {
-                throw invalidResponse();
+                throw invalidResponse(AnalysisValidationFailure.UNSUPPORTED_EVIDENCE);
             }
-            if ((status == MatchStatus.MATCHED || status == MatchStatus.PARTIAL)
-                    && (evidence.isNull() || evidence.textValue().isBlank())) {
-                throw invalidResponse();
-            }
-            if (evidence.isTextual() && !evidence.textValue().isBlank()
-                    && !normalized(resumeContent).contains(normalized(evidence.textValue()))) {
-                throw invalidResponse();
-            }
+            rejectUnexpectedFields(skill, SKILL_FIELDS);
         }
     }
 
     private void validateStringArray(JsonNode node) {
         if (node == null || !node.isArray()) {
-            throw invalidResponse();
+            throw invalidResponse(AnalysisValidationFailure.MISSING_REQUIRED_COLLECTION);
         }
-        node.forEach(this::requireNonBlankText);
+        node.forEach(item -> requireNonBlankText(
+                item,
+                AnalysisValidationFailure.BLANK_REQUIRED_COLLECTION_ITEM
+        ));
     }
 
-    private void requireObjectWithExactFields(JsonNode node, Set<String> expectedFields) {
+    private void requireObject(JsonNode node) {
         if (node == null || !node.isObject()) {
-            throw invalidResponse();
+            throw invalidResponse(AnalysisValidationFailure.RESPONSE_SCHEMA_MISMATCH);
         }
+    }
+
+    private void rejectUnexpectedFields(JsonNode node, Set<String> expectedFields) {
         Set<String> actualFields = new java.util.HashSet<>();
         node.fieldNames().forEachRemaining(actualFields::add);
         if (!actualFields.equals(expectedFields)) {
-            throw invalidResponse();
+            throw invalidResponse(AnalysisValidationFailure.RESPONSE_SCHEMA_MISMATCH);
         }
     }
 
-    private void requireNonBlankText(JsonNode node) {
+    private String unwrapCompleteJsonCodeFence(String content) {
+        String stripped = content.strip();
+        Matcher matcher = COMPLETE_JSON_CODE_FENCE.matcher(stripped);
+        if (matcher.matches()) {
+            String unwrapped = matcher.group(1).strip();
+            if (unwrapped.isEmpty()) {
+                throw invalidResponse(AnalysisValidationFailure.EMPTY_PROVIDER_CONTENT);
+            }
+            return unwrapped;
+        }
+        if (stripped.startsWith("```") || stripped.endsWith("```")) {
+            throw invalidResponse(AnalysisValidationFailure.MARKDOWN_WRAPPED_JSON);
+        }
+        return stripped;
+    }
+
+    private void requireNonBlankText(JsonNode node, AnalysisValidationFailure failure) {
         if (node == null || !node.isTextual() || node.textValue().isBlank()) {
-            throw invalidResponse();
+            throw invalidResponse(failure);
         }
-    }
-
-    private String normalized(String value) {
-        return WHITESPACE.matcher(value.strip().toLowerCase(Locale.ROOT)).replaceAll(" ");
     }
 
     private NvidiaProviderException temporarilyUnavailable() {
         return new NvidiaProviderException(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "NVIDIA analysis service is temporarily unavailable."
+                NvidiaProviderException.Reason.TEMPORARY_UNAVAILABLE,
+                "NVIDIA is temporarily unavailable. Try again later."
         );
     }
 
-    private NvidiaProviderException invalidResponse() {
+    private NvidiaProviderException invalidResponse(AnalysisValidationFailure validationFailure) {
         return new NvidiaProviderException(
                 HttpStatus.BAD_GATEWAY,
-                "NVIDIA returned an invalid analysis response."
+                NvidiaProviderException.Reason.INVALID_RESPONSE,
+                "NVIDIA returned an invalid analysis. Try again; no result was saved.",
+                validationFailure
         );
     }
 }

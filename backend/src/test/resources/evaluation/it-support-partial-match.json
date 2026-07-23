@@ -1,0 +1,30 @@
+{
+  "fixtureId": "it-support-partial-match",
+  "resumeText": "Synthetic candidate Jules Pine resolved workstation connectivity issues and documented basic network troubleshooting for fictional Maple Desk Services.",
+  "jobDescription": "Fictional Sunbird Support requires enterprise networking troubleshooting and Cisco administration, with DNS and DHCP knowledge preferred.",
+  "expectedScoreRange": { "minimum": 15, "maximum": 75 },
+  "expectedMatchedSkills": [],
+  "expectedPartialSkills": ["Networking"],
+  "expectedMissingSkills": ["Cisco"],
+  "skillLabelAliases": [
+    {
+      "status": "PARTIAL",
+      "expectedSkill": "Networking",
+      "acceptedLabels": [
+        "Networking",
+        "Network troubleshooting",
+        "Enterprise networking troubleshooting"
+      ]
+    },
+    {
+      "status": "MISSING",
+      "expectedSkill": "Cisco",
+      "acceptedLabels": [
+        "Cisco",
+        "Cisco administration"
+      ]
+    }
+  ],
+  "forbiddenClaims": ["holds a Cisco certification", "administered enterprise Cisco networks"],
+  "additionalValidationNotes": ["Basic workstation connectivity is partial evidence for enterprise networking, but it does not prove Cisco administration."]
+}

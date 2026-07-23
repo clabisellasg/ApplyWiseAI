@@ -1,0 +1,11 @@
+{
+  "fixtureId": "no-clear-requirements",
+  "resumeText": "Synthetic candidate Taylor Wren provided courteous customer support and maintained concise internal notes for fictional Quiet Oak Cooperative.",
+  "jobDescription": "Fictional Silver Path seeks a thoughtful teammate with clear communication, curiosity, and dependable follow-through.",
+  "expectedScoreRange": { "minimum": 0, "maximum": 40 },
+  "expectedMatchedSkills": [],
+  "expectedPartialSkills": [],
+  "expectedMissingSkills": [],
+  "forbiddenClaims": ["earned a computer science degree", "administered enterprise networks"],
+  "additionalValidationNotes": ["The result should acknowledge that the documents contain no clear technical requirements."]
+}

@@ -50,7 +50,7 @@ Fake mode uses a deterministic local keyword matcher, makes no external AI reque
 
 NVIDIA mode sends the selected resume content and job description to NVIDIA's hosted API at `https://integrate.api.nvidia.com/v1/chat/completions`. An NVIDIA API key is required. The hosted endpoint is currently a free development/trial service and may have rate or availability limits. Use synthetic or redacted resumes during development; do not send personal data unless you have reviewed NVIDIA's applicable terms and privacy practices.
 
-The backend requests non-streaming output from `nvidia/nemotron-3-super-120b-a12b` with extended reasoning disabled. Structured output uses NVIDIA NIM guided JSON through `nvext.guided_json`, followed by strict Java validation before an analysis can be saved. The provider is instructed not to invent qualifications, and any returned resume evidence must match text in the submitted resume.
+The backend requests non-streaming output from `nvidia/nemotron-3-super-120b-a12b` with extended reasoning disabled. Structured output uses NVIDIA NIM guided JSON through `nvext.guided_json`, followed by strict Java validation before an analysis can be saved. Responses are read from `choices[0].message.content`; refusal and token-limit finish metadata are checked before parsing. A single complete Markdown-fenced JSON object is safely unwrapped, but commentary, malformed JSON, schema mismatches, and truncated output are rejected. The provider is instructed not to invent qualifications, and any returned resume evidence must match text in the submitted resume.
 
 Fake remains the default. To run the backend in NVIDIA mode from a new PowerShell window, set the variables only in that process and then start Spring Boot:
 
@@ -68,6 +68,8 @@ Set-Location .\backend
 
 If `AI_PROVIDER=nvidia` and `NVIDIA_API_KEY` is missing, startup fails clearly. Provider errors never fall back to a fake result. Automated tests mock the NVIDIA HTTP boundary, never contact NVIDIA, and consume no API quota.
 
+Completed analyses are fingerprinted from the resume text, job description, provider, model, and prompt version. Identical requests reuse the stored result without another provider call; failed or invalid responses are never cached. NVIDIA results are also rejected unless matched and partial evidence can be grounded directly in the supplied resume.
+
 Configuration variables:
 
 | Variable | Default | Purpose |
@@ -77,10 +79,13 @@ Configuration variables:
 | `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA API base URL. |
 | `NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Exact hosted model identifier saved with each analysis. |
 | `NVIDIA_TIMEOUT_SECONDS` | `120` | Connect and response timeout. |
-| `NVIDIA_MAX_TOKENS` | `4096` | Maximum generated output tokens. |
+| `NVIDIA_MAX_TOKENS` | `4096` | Maximum generated output tokens; responses ending with a token-limit finish reason are rejected as truncated. |
 | `NVIDIA_MAX_INPUT_CHARACTERS` | `50000` | Per-document input limit; oversized text is rejected, not truncated. |
+| `RUN_LIVE_AI_EVALS` | `false` | Explicit safety switch required by the opt-in live evaluation profile. |
 
 The root `.env.example` contains placeholders for local reference. Spring Boot does not automatically import that file when launched directly, so set variables in PowerShell or through your IDE. Real `.env` files and `application-local` configuration files are ignored and must never be committed.
+
+The synthetic evaluation suite, pass criteria, limitations, and opt-in live command are documented in [`docs/EVALUATION.md`](docs/EVALUATION.md). Normal verification never runs the live profile.
 
 To stop PostgreSQL, return to the repository root and run:
 

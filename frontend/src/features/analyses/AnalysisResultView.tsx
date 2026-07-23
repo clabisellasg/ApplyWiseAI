@@ -29,6 +29,7 @@ function formattedDate(value: string): string {
 
 export function AnalysisResultView({ analysis, jobLabel, resumeLabel }: AnalysisResultViewProps) {
   const { result } = analysis
+  const isFakeProvider = analysis.provider === 'fake'
 
   return (
     <article className="analysis-result" aria-labelledby="analysis-result-heading">
@@ -41,9 +42,20 @@ export function AnalysisResultView({ analysis, jobLabel, resumeLabel }: Analysis
         <span className="analysis-date">Created {formattedDate(analysis.createdAt)}</span>
       </header>
 
+      {analysis.cacheHit && (
+        <div className="cache-hit-note" role="status">
+          <strong>Previously analyzed result</strong>
+          <span>No additional provider request was needed for these identical inputs.</span>
+        </div>
+      )}
+
       <div className="local-analyzer-note">
-        <strong>Deterministic local analysis</strong>
-        <span>This result comes from a fixed keyword matcher, not generative AI.</span>
+        <strong>{isFakeProvider ? 'Deterministic local analysis' : 'NVIDIA hosted analysis'}</strong>
+        <span>
+          {isFakeProvider
+            ? 'This result comes from a fixed keyword matcher, not generative AI.'
+            : 'This result passed server-side structure and resume-evidence validation.'}
+        </span>
       </div>
 
       <MatchScore score={analysis.matchScore} />
