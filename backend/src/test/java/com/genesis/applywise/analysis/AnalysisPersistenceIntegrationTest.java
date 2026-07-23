@@ -31,8 +31,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfSystemProperty(named = "db.integration", matches = "true")
 class AnalysisPersistenceIntegrationTest {
 
+    private static final String INPUT_HASH = "b".repeat(64);
+
     @Autowired
     private AnalysisRepository analysisRepository;
+
+    @Autowired
+    private AnalysisInputLockRepository inputLockRepository;
 
     @Autowired
     private ResumeRepository resumeRepository;
@@ -62,7 +67,8 @@ class AnalysisPersistenceIntegrationTest {
                 result,
                 "fake",
                 "keyword-matcher-v1",
-                "v1"
+                "v1",
+                INPUT_HASH
         ));
         Long id = saved.getId();
         entityManager.clear();
@@ -75,9 +81,23 @@ class AnalysisPersistenceIntegrationTest {
                   AND column_name = 'result_json'
                 """, String.class);
         Analysis reloaded = analysisRepository.findById(id).orElseThrow();
+        String uniqueIndex = jdbcTemplate.queryForObject("""
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = 'uq_analyses_input_fingerprint'
+                """, String.class);
 
         assertThat(dataType).isEqualTo("jsonb");
+        assertThat(uniqueIndex).contains("UNIQUE INDEX").contains("input_hash");
         assertThat(reloaded.getResult()).isEqualTo(result);
+        assertThat(reloaded.getInputHash()).isEqualTo(INPUT_HASH);
+        assertThat(analysisRepository.findByInputHashAndProviderAndModelAndPromptVersion(
+                INPUT_HASH,
+                "fake",
+                "keyword-matcher-v1",
+                "v1"
+        )).contains(reloaded);
         assertThat(reloaded.getMatchScore()).isEqualTo(50);
         assertThat(reloaded.getResume().getId()).isEqualTo(sources.resume().getId());
         assertThat(reloaded.getJobPosting().getId()).isEqualTo(sources.jobPosting().getId());
@@ -104,6 +124,14 @@ class AnalysisPersistenceIntegrationTest {
                 "fk_analyses_resume", "RESTRICT",
                 "fk_analyses_job_posting", "RESTRICT"
         ));
+    }
+
+    @Test
+    void databaseAdvisoryLockAcceptsTheSha256Fingerprint() {
+        inputLockRepository.acquire(INPUT_HASH);
+
+        Integer stillInTransaction = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+        assertThat(stillInTransaction).isEqualTo(1);
     }
 
     private SourceRecords createSources() {

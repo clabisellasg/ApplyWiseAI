@@ -14,6 +14,7 @@ public record AnalysisResponse(
         String provider,
         String model,
         String promptVersion,
-        Instant createdAt
+        Instant createdAt,
+        boolean cacheHit
 ) {
 }

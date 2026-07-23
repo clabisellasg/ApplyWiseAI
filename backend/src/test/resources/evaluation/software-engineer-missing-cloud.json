@@ -1,0 +1,11 @@
+{
+  "fixtureId": "software-engineer-missing-cloud",
+  "resumeText": "Synthetic candidate Ari Moss developed Java and Spring Boot services with PostgreSQL for fictional Harbor Finch Software.",
+  "jobDescription": "Fictional Blue Lantern needs Java and Spring Boot experience. AWS deployment and Docker experience are required.",
+  "expectedScoreRange": { "minimum": 25, "maximum": 80 },
+  "expectedMatchedSkills": ["Java", "Spring Boot"],
+  "expectedPartialSkills": [],
+  "expectedMissingSkills": ["AWS", "Docker"],
+  "forbiddenClaims": ["holds an AWS certification", "deployed production workloads to AWS"],
+  "additionalValidationNotes": ["Cloud and container claims must not be inferred from backend development."]
+}

@@ -62,8 +62,8 @@ export function App() {
           <p className="eyebrow">Application workspace</p>
           <h1 id="page-title">Keep the evidence for your next opportunity in one place.</h1>
           <p>
-            Save job postings and text resumes, then compare them with a deterministic local
-            keyword analyzer that stays grounded in your source material.
+            Save job postings and text resumes, then compare them with a configured analyzer that
+            validates evidence against your source material.
           </p>
         </section>
 
@@ -123,7 +123,7 @@ export function App() {
       </main>
 
       <footer className="site-footer">
-        <p>Milestone 2 · Deterministic job-match workspace</p>
+        <p>Milestone 3 · Grounded job-match workspace</p>
       </footer>
     </div>
   )

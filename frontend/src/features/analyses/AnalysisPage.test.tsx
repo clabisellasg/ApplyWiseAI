@@ -25,7 +25,10 @@ const JOB: JobPosting = {
   updatedAt: '2026-02-01T10:00:00Z',
 }
 
-function analysis(summary = 'One matched skill and one missing skill.'): Analysis {
+function analysis(
+  summary = 'One matched skill and one missing skill.',
+  cacheHit = false,
+): Analysis {
   return {
     id: 7,
     resumeId: 1,
@@ -57,6 +60,7 @@ function analysis(summary = 'One matched skill and one missing skill.'): Analysi
     model: 'keyword-matcher-v1',
     promptVersion: 'v1',
     createdAt: '2026-02-01T10:15:30Z',
+    cacheHit,
   }
 }
 
@@ -76,7 +80,12 @@ function requestUrl(input: RequestInfo | URL): string {
   return input instanceof URL ? input.toString() : input.url
 }
 
-function setupFetch(options?: { history?: Analysis[]; postError?: string; detail?: Analysis }) {
+function setupFetch(options?: {
+  history?: Analysis[]
+  postError?: { message: string; status: number }
+  postResult?: Analysis
+  detail?: Analysis
+}) {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input)
     const method = init?.method ?? 'GET'
@@ -89,8 +98,8 @@ function setupFetch(options?: { history?: Analysis[]; postError?: string; detail
     }
     if (url.endsWith('/api/analyses') && method === 'POST') {
       return options?.postError
-        ? response({ message: options.postError }, 503)
-        : response(analysis())
+        ? response({ message: options.postError.message }, options.postError.status)
+        : response(options?.postResult ?? analysis())
     }
     if (url.endsWith('/api/analyses') && method === 'GET') {
       return response(options?.history ?? [])
@@ -135,7 +144,7 @@ describe('AnalysisPage', () => {
 
   it('shows a readable API failure from analysis creation', async () => {
     const user = userEvent.setup()
-    setupFetch({ postError: 'Analyzer unavailable' })
+    setupFetch({ postError: { message: 'Analyzer unavailable', status: 503 } })
     render(<AnalysisPage onNavigate={vi.fn()} />)
 
     await screen.findByRole('option', { name: 'Primary Resume — Software Engineer' })
@@ -143,8 +152,44 @@ describe('AnalysisPage', () => {
     await user.selectOptions(screen.getByLabelText('Job posting'), '2')
     await user.click(screen.getByRole('button', { name: 'Analyze match' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Analyzer unavailable')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'NVIDIA is temporarily unavailable. Try again later.',
+    )
     expect(screen.getByRole('button', { name: 'Analyze match' })).toBeEnabled()
+  })
+
+  it('shows a previously analyzed notice for a reused result', async () => {
+    const user = userEvent.setup()
+    setupFetch({ postResult: analysis('Reused result.', true) })
+    render(<AnalysisPage onNavigate={vi.fn()} />)
+
+    await screen.findByRole('option', { name: 'Primary Resume — Software Engineer' })
+    await user.selectOptions(screen.getByLabelText('Resume'), '1')
+    await user.selectOptions(screen.getByLabelText('Job posting'), '2')
+    await user.click(screen.getByRole('button', { name: 'Analyze match' }))
+
+    expect(await screen.findByText('Previously analyzed result')).toBeVisible()
+    expect(screen.getByText('Previously analyzed result reopened without another provider call.'))
+      .toBeVisible()
+  })
+
+  it.each([
+    [400, 'Resume content is blank', 'The selected resume or job data is invalid.'],
+    [404, 'Resume not found: 9', 'The selected resume or job no longer exists.'],
+    [503, 'NVIDIA authentication failed.', 'NVIDIA authentication failed.'],
+    [429, 'Rate limited', 'NVIDIA rate limit reached.'],
+    [502, 'Malformed response', 'NVIDIA returned an invalid analysis.'],
+  ])('maps analysis API status %s to an actionable message', async (status, message, expected) => {
+    const user = userEvent.setup()
+    setupFetch({ postError: { message, status } })
+    render(<AnalysisPage onNavigate={vi.fn()} />)
+
+    await screen.findByRole('option', { name: 'Primary Resume — Software Engineer' })
+    await user.selectOptions(screen.getByLabelText('Resume'), '1')
+    await user.selectOptions(screen.getByLabelText('Job posting'), '2')
+    await user.click(screen.getByRole('button', { name: 'Analyze match' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(expected)
   })
 
   it('reopens a complete saved analysis from history', async () => {

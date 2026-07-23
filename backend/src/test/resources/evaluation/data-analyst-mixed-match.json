@@ -1,0 +1,11 @@
+{
+  "fixtureId": "data-analyst-mixed-match",
+  "resumeText": "Synthetic candidate Casey Lune wrote SQL queries, built PostgreSQL reports, and created Power BI dashboards for fictional Orchard Metric.",
+  "jobDescription": "Fictional Meridian Data seeks SQL, Power BI, Python, and AWS experience for a data analyst role.",
+  "expectedScoreRange": { "minimum": 25, "maximum": 80 },
+  "expectedMatchedSkills": ["SQL", "Power BI"],
+  "expectedPartialSkills": [],
+  "expectedMissingSkills": ["Python", "AWS"],
+  "forbiddenClaims": ["built Python pipelines", "managed an AWS data lake"],
+  "additionalValidationNotes": ["Database reporting must not be treated as evidence of Python or AWS."]
+}

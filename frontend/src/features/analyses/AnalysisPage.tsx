@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getErrorMessage } from '../../api/client'
+import { ApiError, getErrorMessage } from '../../api/client'
 import { FeedbackBanner } from '../../components/FeedbackBanner'
 import { getJobs } from '../jobs/jobApi'
 import type { JobPosting } from '../jobs/jobTypes'
@@ -19,6 +19,36 @@ function newestFirst(analyses: Analysis[]): Analysis[] {
   return [...analyses].sort(
     (first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime(),
   )
+}
+
+function analysisErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return getErrorMessage(error)
+  }
+
+  if (error.status === 400) {
+    return `The selected resume or job data is invalid. ${error.message}`
+  }
+  if (error.status === 404) {
+    return 'The selected resume or job no longer exists. Refresh the saved records and try again.'
+  }
+  if (error.status === 401 || error.status === 403) {
+    return 'NVIDIA authentication failed. Verify the backend API-key configuration.'
+  }
+  if (error.status === 429) {
+    return 'NVIDIA rate limit reached. Wait before trying again.'
+  }
+  if (error.status === 502) {
+    return 'NVIDIA returned an invalid analysis. No result was saved; try again.'
+  }
+  if (error.status === 503 && error.message.toLowerCase().includes('authentication')) {
+    return 'NVIDIA authentication failed. Verify the backend API-key configuration.'
+  }
+  if (error.status === 503) {
+    return 'NVIDIA is temporarily unavailable. Try again later.'
+  }
+
+  return error.message
 }
 
 export function AnalysisPage({ onNavigate }: AnalysisPageProps) {
@@ -137,9 +167,11 @@ export function AnalysisPage({ onNavigate }: AnalysisPageProps) {
         ...current.filter((analysis) => analysis.id !== created.id),
       ]))
       setSubmissionError(null)
-      setSuccessMessage('Analysis completed and saved to history.')
+      setSuccessMessage(created.cacheHit
+        ? 'Previously analyzed result reopened without another provider call.'
+        : 'Analysis completed and saved to history.')
     } catch (error) {
-      setSubmissionError(getErrorMessage(error))
+      setSubmissionError(analysisErrorMessage(error))
       throw error
     } finally {
       submissionLock.current = false
@@ -178,11 +210,11 @@ export function AnalysisPage({ onNavigate }: AnalysisPageProps) {
   return (
     <section className="analysis-page" aria-labelledby="analysis-page-heading">
       <header className="analysis-page__intro">
-        <p className="eyebrow">Deterministic comparison</p>
+        <p className="eyebrow">Grounded comparison</p>
         <h2 id="analysis-page-heading">Job match analysis</h2>
         <p>
-          Select saved source material, run the local keyword matcher, and revisit every stored
-          result without sending your data to an external AI provider.
+          Select saved source material, run the configured analyzer, and revisit grounded stored
+          results. NVIDIA mode sends the selected text to NVIDIA's hosted API.
         </p>
       </header>
 

@@ -27,6 +27,7 @@ export type Analysis = {
   model: string
   promptVersion: string
   createdAt: string
+  cacheHit: boolean
 }
 
 export type CreateAnalysisInput = {

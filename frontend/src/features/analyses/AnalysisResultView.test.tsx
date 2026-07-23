@@ -46,6 +46,7 @@ const ANALYSIS: Analysis = {
   model: 'keyword-matcher-v1',
   promptVersion: 'v1',
   createdAt: '2026-02-01T10:15:30Z',
+  cacheHit: false,
 }
 
 describe('AnalysisResultView', () => {
@@ -67,5 +68,20 @@ describe('AnalysisResultView', () => {
     expect(screen.getByText('Related JavaScript evidence was found.')).toBeVisible()
     expect(screen.getAllByText('No supporting resume evidence found.')).toHaveLength(2)
     expect(screen.getByText('This result comes from a fixed keyword matcher, not generative AI.')).toBeVisible()
+  })
+
+  it('labels a reused NVIDIA result without calling it a browser cache', () => {
+    render(
+      <AnalysisResultView
+        analysis={{ ...ANALYSIS, provider: 'nvidia', cacheHit: true }}
+        resumeLabel="Primary Resume"
+        jobLabel="Backend Engineer at Genesis"
+      />,
+    )
+
+    expect(screen.getByText('Previously analyzed result')).toBeVisible()
+    expect(screen.getByText(/No additional provider request was needed/)).toBeVisible()
+    expect(screen.getByText('NVIDIA hosted analysis')).toBeVisible()
+    expect(screen.queryByText(/browser cache/i)).not.toBeInTheDocument()
   })
 })

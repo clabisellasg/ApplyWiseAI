@@ -60,12 +60,12 @@ export function AnalysisForm({
           <p className="eyebrow">New comparison</p>
           <h2>Run a job match</h2>
         </div>
-        <span className="local-badge">Local</span>
+        <span className="local-badge">Configured</span>
       </div>
 
       <p className="panel-description">
-        Compare saved text using the deterministic keyword analyzer. No external AI service is
-        contacted.
+        Compare saved text with the analyzer configured on the backend. Identical inputs can reuse
+        a previously completed result.
       </p>
 
       {isLoading && <FeedbackBanner tone="info">Loading resumes and jobs…</FeedbackBanner>}
