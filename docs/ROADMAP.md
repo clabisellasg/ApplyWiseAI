@@ -5,4 +5,5 @@
 - Milestone 2: Fake AI analysis
 - Milestone 3A: NVIDIA Nemotron API integration
 - Milestone 3B: NVIDIA Nemotron evaluation, reliability, and quota protection
-- Milestone 4: Application tracker and portfolio polish
+- Milestone 4A: Application Tracker backend
+- Milestone 4B: Application Tracker frontend and portfolio polish

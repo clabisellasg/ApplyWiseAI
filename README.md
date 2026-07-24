@@ -87,6 +87,62 @@ The root `.env.example` contains placeholders for local reference. Spring Boot d
 
 The synthetic evaluation suite, pass criteria, limitations, and opt-in live command are documented in [`docs/EVALUATION.md`](docs/EVALUATION.md). Normal verification never runs the live profile.
 
+## Application Tracker API
+
+Milestone 4A adds backend-only tracking for saved and submitted applications. It makes zero NVIDIA
+calls. Application records may reference an existing job, optional resume, and optional analysis.
+An analysis must belong to the selected job and, when a resume is selected, to that resume.
+
+Available statuses are `SAVED`, `APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, and `WITHDRAWN`.
+Status changes are intentionally not restricted to a one-way workflow. Entering `APPLIED`,
+`INTERVIEW`, or `OFFER` automatically supplies the current date when `appliedAt` is empty; an
+existing or manually corrected date is preserved.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/applications` | Track a job application. |
+| `GET` | `/api/applications` | List applications by most recently updated. |
+| `GET` | `/api/applications?status=APPLIED` | Filter applications by status. |
+| `GET` | `/api/applications/{id}` | Get one application. |
+| `PUT` | `/api/applications/{id}` | Update resume, analysis, dates, follow-up, and notes. |
+| `PATCH` | `/api/applications/{id}/status` | Change status and append history. |
+| `GET` | `/api/applications/{id}/history` | Read newest status changes first. |
+| `DELETE` | `/api/applications/{id}` | Delete the tracker record and its history. |
+
+Only one tracker record is allowed per job posting. Duplicate tracking returns `409 Conflict`.
+A tracked job cannot be deleted. Deleting an application never deletes its job, resume, or
+analysis. The application foreign keys use `ON DELETE SET NULL` for optional resume and analysis
+links, `ON DELETE RESTRICT` for the job, and `ON DELETE CASCADE` only for the application's own
+status history.
+
+### Postman examples
+
+Create an application with `POST http://localhost:8080/api/applications` and a JSON body:
+
+```json
+{
+  "jobPostingId": 1,
+  "resumeId": 1,
+  "analysisId": 1,
+  "status": "SAVED",
+  "nextAction": "Tailor interview examples",
+  "nextActionAt": "2026-08-01T09:30:00+08:00",
+  "notes": "Follow up after submitting."
+}
+```
+
+Change its status with `PATCH http://localhost:8080/api/applications/1/status`:
+
+```json
+{
+  "status": "APPLIED"
+}
+```
+
+Filter submitted applications with
+`GET http://localhost:8080/api/applications?status=APPLIED`, and inspect history with
+`GET http://localhost:8080/api/applications/1/history`.
+
 To stop PostgreSQL, return to the repository root and run:
 
 ```powershell

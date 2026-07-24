@@ -1,6 +1,9 @@
 package com.genesis.applywise.job;
 
+import com.genesis.applywise.application.JobApplicationRepository;
+import com.genesis.applywise.common.exception.ConflictException;
 import com.genesis.applywise.common.exception.ResourceNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,9 +13,14 @@ import java.util.List;
 public class JobPostingService {
 
     private final JobPostingRepository jobPostingRepository;
+    private final JobApplicationRepository jobApplicationRepository;
 
-    public JobPostingService(JobPostingRepository jobPostingRepository) {
+    public JobPostingService(
+            JobPostingRepository jobPostingRepository,
+            JobApplicationRepository jobApplicationRepository
+    ) {
         this.jobPostingRepository = jobPostingRepository;
+        this.jobApplicationRepository = jobApplicationRepository;
     }
 
     @Transactional
@@ -54,12 +62,29 @@ public class JobPostingService {
 
     @Transactional
     public void delete(Long id) {
-        jobPostingRepository.delete(findJobPosting(id));
+        JobPosting jobPosting = findJobPosting(id);
+        if (jobApplicationRepository.existsByJobPostingId(id)) {
+            throw trackedJobConflict(id);
+        }
+        try {
+            jobPostingRepository.delete(jobPosting);
+            jobPostingRepository.flush();
+        } catch (DataIntegrityViolationException exception) {
+            throw new ConflictException(
+                    "Job posting " + id + " cannot be deleted because it is still referenced."
+            );
+        }
     }
 
     private JobPosting findJobPosting(Long id) {
         return jobPostingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Job posting not found: " + id));
+    }
+
+    private ConflictException trackedJobConflict(Long id) {
+        return new ConflictException(
+                "Job posting " + id + " cannot be deleted while it has a tracked application."
+        );
     }
 
     private JobPostingResponse toResponse(JobPosting jobPosting) {

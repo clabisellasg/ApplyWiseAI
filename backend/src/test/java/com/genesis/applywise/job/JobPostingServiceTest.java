@@ -1,5 +1,7 @@
 package com.genesis.applywise.job;
 
+import com.genesis.applywise.application.JobApplicationRepository;
+import com.genesis.applywise.common.exception.ConflictException;
 import com.genesis.applywise.common.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,11 +29,17 @@ class JobPostingServiceTest {
     @Mock
     private JobPostingRepository jobPostingRepository;
 
+    @Mock
+    private JobApplicationRepository jobApplicationRepository;
+
     private JobPostingService jobPostingService;
 
     @BeforeEach
     void setUp() {
-        jobPostingService = new JobPostingService(jobPostingRepository);
+        jobPostingService = new JobPostingService(
+                jobPostingRepository,
+                jobApplicationRepository
+        );
     }
 
     @Test
@@ -113,6 +121,20 @@ class JobPostingServiceTest {
         jobPostingService.delete(1L);
 
         verify(jobPostingRepository).delete(jobPosting);
+        verify(jobPostingRepository).flush();
+    }
+
+    @Test
+    void preventsDeletingTrackedJobPosting() {
+        JobPosting jobPosting = persisted(jobPosting("Engineer"), 1L);
+        when(jobPostingRepository.findById(1L)).thenReturn(Optional.of(jobPosting));
+        when(jobApplicationRepository.existsByJobPostingId(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> jobPostingService.delete(1L))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage(
+                        "Job posting 1 cannot be deleted while it has a tracked application."
+                );
     }
 
     private JobPosting jobPosting(String title) {

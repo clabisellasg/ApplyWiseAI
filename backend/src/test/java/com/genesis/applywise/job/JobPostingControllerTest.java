@@ -1,5 +1,6 @@
 package com.genesis.applywise.job;
 
+import com.genesis.applywise.common.exception.ConflictException;
 import com.genesis.applywise.common.exception.GlobalExceptionHandler;
 import com.genesis.applywise.common.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -129,6 +131,19 @@ class JobPostingControllerTest {
         mockMvc.perform(delete("/api/jobs/1"))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
+    }
+
+    @Test
+    void returnsConflictWhenTrackedJobPostingCannotBeDeleted() throws Exception {
+        doThrow(new ConflictException(
+                "Job posting 1 cannot be deleted while it has a tracked application."
+        )).when(jobPostingService).delete(1L);
+
+        mockMvc.perform(delete("/api/jobs/1"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(
+                        "Job posting 1 cannot be deleted while it has a tracked application."
+                ));
     }
 
     private JobPostingResponse response() {
