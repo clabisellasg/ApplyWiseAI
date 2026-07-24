@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -203,6 +204,39 @@ class JobApplicationControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
+    }
+
+    @Test
+    void allowsFrontendPreflightForStatusPatch() throws Exception {
+        mockMvc.perform(options("/api/applications/1/status")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "PATCH")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Origin",
+                        "http://localhost:5173"
+                ))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Methods",
+                        "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+                ))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        "content-type"
+                ));
+
+        verifyNoInteractions(jobApplicationService);
+    }
+
+    @Test
+    void rejectsStatusPatchPreflightFromUnconfiguredOrigin() throws Exception {
+        mockMvc.perform(options("/api/applications/1/status")
+                        .header("Origin", "https://untrusted.example")
+                        .header("Access-Control-Request-Method", "PATCH"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(jobApplicationService);
     }
 
     @Test

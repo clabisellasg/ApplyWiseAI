@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiRequest } from './api/client'
 import { AnalysisPage } from './features/analyses/AnalysisPage'
+import { ApplicationPage } from './features/applications/ApplicationPage'
 import { JobsSection } from './features/jobs/JobsSection'
 import { ResumesSection } from './features/resumes/ResumesSection'
 
@@ -9,7 +10,7 @@ type HealthResponse = {
 }
 
 type ConnectionState = 'loading' | 'online' | 'error'
-type ActiveSection = 'jobs' | 'resumes' | 'analyses'
+type ActiveSection = 'jobs' | 'resumes' | 'analyses' | 'applications'
 
 export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
@@ -101,6 +102,17 @@ export function App() {
           >
             Job match
           </button>
+          <button
+            id="applications-tab"
+            className="section-tab"
+            type="button"
+            role="tab"
+            aria-controls="applications-panel"
+            aria-selected={activeSection === 'applications'}
+            onClick={() => setActiveSection('applications')}
+          >
+            Applications
+          </button>
         </nav>
 
         <div className="workspace-panel">
@@ -119,11 +131,21 @@ export function App() {
               <AnalysisPage onNavigate={setActiveSection} />
             </div>
           )}
+          {activeSection === 'applications' && (
+            <div
+              id="applications-panel"
+              role="tabpanel"
+              aria-labelledby="applications-tab"
+              tabIndex={0}
+            >
+              <ApplicationPage onNavigate={setActiveSection} />
+            </div>
+          )}
         </div>
       </main>
 
       <footer className="site-footer">
-        <p>Milestone 3 · Grounded job-match workspace</p>
+        <p>Milestone 4 · Grounded job-match and application workspace</p>
       </footer>
     </div>
   )
